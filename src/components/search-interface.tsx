@@ -20,10 +20,10 @@ export default function SearchInterface() {
   const [isLoading, setIsLoading] = useState(false)
   const [totalHits, setTotalHits] = useState(0)
 
-  const MEILI_URL = "https://meilisearch.solucoes.click"
-  const INDEX = "juridico"
-  const SEARCH_KEY = "lePdd1DnG6MAJ7mW7raxMD4U95pVDshm"
-  const FILE_SERVER = "http://localhost:8000/files/"
+  const MEILI_URL = process.env.NEXT_PUBLIC_MEILI_URL
+  const INDEX = process.env.NEXT_PUBLIC_INDEX
+  const SEARCH_KEY = process.env.NEXT_PUBLIC_SEARCH_KEY
+  const FILE_SERVER = process.env.NEXT_PUBLIC_FILE_SERVER
 
   async function handleSearch() {
     if (!query.trim()) return
