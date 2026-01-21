@@ -20,6 +20,22 @@ interface SearchResult {
   }
 }
 
+const UNC_PREFIX = "//10.130.1.99/DeptosMatriz/Juridico/"
+
+function toUncPath(originalPath: string) {
+  const trimmed = originalPath?.trim()
+  if (!trimmed) return ""
+  const withoutDados = trimmed.replace(/^\/?:?dados\//i, "")
+  return `${UNC_PREFIX}${withoutDados}`
+}
+
+function buildFileHref(originalPath: string, term: string) {
+  const corrected = toUncPath(originalPath)
+  if (!corrected) return "#"
+  const searchFragment = term ? `#search=${encodeURIComponent(term)}` : ""
+  return `file:${corrected}${searchFragment}`
+}
+
 export default function SearchInterface() {
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<SearchResult[]>([])
@@ -116,8 +132,8 @@ export default function SearchInterface() {
 
               {/* Link para abrir o arquivo original (ajuste conforme o seu servidor de arquivos) */}
               <Button variant="outline" size="sm" asChild className="ml-4">
-                <a 
-                  href={`file://${hit._source.caminho_original}`} 
+                <a
+                  href={buildFileHref(hit._source.caminho_original, query)}
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="flex items-center gap-1"
