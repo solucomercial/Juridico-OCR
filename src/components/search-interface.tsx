@@ -14,6 +14,7 @@ interface SearchResult {
     conteudo: string
     data: string
     caminho_original: string
+    pagina: number
   }
   highlight?: {
     conteudo?: string[]
@@ -29,11 +30,15 @@ function toUncPath(originalPath: string) {
   return `${UNC_PREFIX}${withoutDados}`
 }
 
-function buildFileHref(originalPath: string, term: string) {
+function buildFileHref(originalPath: string, term: string, pagina?: number) {
   const corrected = toUncPath(originalPath)
   if (!corrected) return "#"
-  const searchFragment = term ? `#search=${encodeURIComponent(term)}` : ""
-  return `file:${corrected}${searchFragment}`
+  const pageFrag = Number.isFinite(pagina) ? `#page=${pagina}` : ""
+  const searchFrag = term ? `${pageFrag ? "&" : "#"}search=${encodeURIComponent(term)}` : ""
+  // Ensure the hash starts with #page if available; otherwise only search
+  const hash = pageFrag || (term ? `#search=${encodeURIComponent(term)}` : "")
+  const extra = pageFrag && term ? `&search=${encodeURIComponent(term)}` : ""
+  return `file:${corrected}${hash}${extra}`
 }
 
 export default function SearchInterface() {
@@ -113,6 +118,7 @@ export default function SearchInterface() {
                   <FileText className="h-5 w-5 text-blue-900" /> 
                   {hit._source.arquivo}
                 </div>
+                <div className="text-xs text-slate-600">Página: {hit._source.pagina}</div>
                 
                 {/* Exibe o destaque (highlight) ou uma prévia do conteúdo */}
                 <div className="text-sm text-slate-600 italic bg-slate-50 p-2 rounded border">
@@ -133,7 +139,7 @@ export default function SearchInterface() {
               {/* Link para abrir o arquivo original (ajuste conforme o seu servidor de arquivos) */}
               <Button variant="outline" size="sm" asChild className="ml-4">
                 <a
-                  href={buildFileHref(hit._source.caminho_original, query)}
+                  href={buildFileHref(hit._source.caminho_original, query, hit._source.pagina)}
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="flex items-center gap-1"

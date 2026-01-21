@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
         query: {
           multi_match: {
             query,
-            fields: ["conteudo", "arquivo"],
+            fields: ["conteudo", "arquivo^2"],
             fuzziness: "AUTO",
           },
         },
