@@ -1,14 +1,23 @@
 "use client"
 
 import { useState } from "react"
-import { Search, FileText, Loader2, ExternalLink } from "lucide-react"
+import { Search, FileText, Loader2, ExternalLink, Calendar } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 
+// Interface atualizada para os campos do OpenSearch
 interface SearchResult {
-  arquivo: string
-  pagina: number
+  _id: string
+  _source: {
+    arquivo: string
+    conteudo: string
+    data: string
+    caminho_original: string
+  }
+  highlight?: {
+    conteudo?: string[]
+  }
 }
 
 export default function SearchInterface() {
@@ -17,39 +26,36 @@ export default function SearchInterface() {
   const [isLoading, setIsLoading] = useState(false)
   const [status, setStatus] = useState("")
 
-  // Pegando as variáveis do .env.local
-  const MEILI_URL = process.env.NEXT_PUBLIC_MEILI_URL
-  const INDEX = process.env.NEXT_PUBLIC_INDEX
-  const SEARCH_KEY = process.env.NEXT_PUBLIC_SEARCH_KEY
-  const FILE_SERVER = process.env.NEXT_PUBLIC_FILE_SERVER
-
   async function handleSearch() {
     if (!query.trim()) return
 
     setIsLoading(true)
-    setStatus("Buscando...")
+    setStatus("Pesquisando no acervo jurídico...")
     setResults([])
 
     try {
-      const res = await fetch(`${MEILI_URL}/indexes/${INDEX}/search`, {
+      const res = await fetch("/api/search", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${SEARCH_KEY}`,
         },
         body: JSON.stringify({
-          q: query,
-          limit: 20,
-          attributesToRetrieve: ["arquivo", "pagina"],
+          query,
         }),
       })
 
+      if (!res.ok) {
+        const { error } = await res.json()
+        throw new Error(error || "Erro na conexão com OpenSearch")
+      }
+
       const data = await res.json()
-      setResults(data.hits)
-      setStatus(`Resultados encontrados: ${data.estimatedTotalHits}`)
+      setResults(data.hits.hits)
+      setStatus(`Documentos encontrados: ${data.hits.total.value}`)
     } catch (error) {
       console.error("Erro na busca:", error)
-      setStatus("Erro ao conectar com o servidor.")
+      const message = error instanceof Error ? error.message : "Erro ao conectar com o servidor OpenSearch."
+      setStatus(message)
     } finally {
       setIsLoading(false)
     }
@@ -57,47 +63,75 @@ export default function SearchInterface() {
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
-      <Card className="p-6">
-        <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-          🔎 Busca de Documentos Jurídicos
-        </h2>
+      <header className="text-center space-y-2">
+        <h1 className="text-3xl font-bold text-slate-800">Soluções Serviços Terceirizados</h1>
+        <p className="text-muted-foreground">Portal de Consulta de Documentos - OpenSearch</p>
+      </header>
+
+      <Card className="p-6 shadow-md border-t-4 border-t-blue-900">
         <div className="flex gap-2">
-          <Input
-            placeholder="Digite o termo de busca..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-          />
-          <Button onClick={handleSearch} disabled={isLoading}>
-            {isLoading ? <Loader2 className="animate-spin" /> : "Buscar"}
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+            <Input
+              className="pl-10"
+              placeholder="Pesquisar por contratos, nomes, CPF ou termos jurídicos..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+            />
+          </div>
+          <Button onClick={handleSearch} disabled={isLoading} className="bg-blue-900 hover:bg-blue-800">
+            {isLoading ? <Loader2 className="animate-spin mr-2" /> : null}
+            {isLoading ? "Buscando" : "Pesquisar"}
           </Button>
         </div>
-        {status && <p className="mt-4 text-sm text-muted-foreground">{status}</p>}
+        {status && <p className="mt-4 text-sm font-medium text-blue-700">{status}</p>}
       </Card>
 
       <div className="space-y-4">
-        {results.map((hit, index) => (
-          <Card key={index} className="p-4 border-l-4 border-l-blue-500">
+        {results.map((hit) => (
+          <Card key={hit._id} className="p-5 hover:shadow-lg transition-shadow border-l-4 border-l-blue-900">
             <div className="flex justify-between items-start">
-              <div>
-                <div className="font-bold flex items-center gap-2">
-                  <FileText className="h-4 w-4" /> {hit.arquivo}
+              <div className="space-y-2">
+                <div className="font-bold text-lg flex items-center gap-2 text-slate-800">
+                  <FileText className="h-5 w-5 text-blue-900" /> 
+                  {hit._source.arquivo}
                 </div>
-                <div className="text-sm text-gray-500">Página: {hit.pagina}</div>
+                
+                {/* Exibe o destaque (highlight) ou uma prévia do conteúdo */}
+                <div className="text-sm text-slate-600 italic bg-slate-50 p-2 rounded border">
+                  {hit.highlight?.conteudo ? (
+                    <span dangerouslySetInnerHTML={{ __html: `...${hit.highlight.conteudo[0]}...` }} />
+                  ) : (
+                    <span>{hit._source.conteudo.substring(0, 150)}...</span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-4 text-xs text-gray-400">
+                  <span className="flex items-center gap-1">
+                    <Calendar className="h-3 w-3" /> Indexado em: {hit._source.data}
+                  </span>
+                </div>
               </div>
-              <Button variant="ghost" size="sm" asChild>
+
+              {/* Link para abrir o arquivo original (ajuste conforme o seu servidor de arquivos) */}
+              <Button variant="outline" size="sm" asChild className="ml-4">
                 <a 
-                  href={`${FILE_SERVER}${hit.arquivo}`} 
+                  href={`file://${hit._source.caminho_original}`} 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="text-blue-600 flex items-center gap-1"
+                  className="flex items-center gap-1"
                 >
-                  <ExternalLink className="h-4 w-4" /> Abrir documento
+                  <ExternalLink className="h-4 w-4" /> Abrir
                 </a>
               </Button>
             </div>
           </Card>
         ))}
+
+        {!isLoading && results.length === 0 && query && (
+          <p className="text-center text-gray-500">Nenhum documento encontrado para "{query}".</p>
+        )}
       </div>
     </div>
   )
