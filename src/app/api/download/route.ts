@@ -54,7 +54,8 @@ async function sanitizeFilePath(requestedPath: string): Promise<SanitizedFile> {
 
 async function streamSingleFile(file: SanitizedFile) {
   const buffer = await readFile(file.fullPath)
-  return new NextResponse(buffer, {
+  const body = new Uint8Array(buffer)
+  return new NextResponse(body, {
     headers: {
       "Content-Type": "application/octet-stream",
       "Content-Disposition": `attachment; filename="${encodeURIComponent(file.name)}"`,
@@ -63,7 +64,7 @@ async function streamSingleFile(file: SanitizedFile) {
   })
 }
 
-async function buildSinglePageBuffer(file: SanitizedFile, page?: number) {
+async function buildSinglePageBuffer(file: SanitizedFile, page?: number): Promise<Buffer> {
   if (!page || page < 1) {
     return readFile(file.fullPath)
   }
@@ -83,7 +84,8 @@ async function buildSinglePageBuffer(file: SanitizedFile, page?: number) {
   const targetPdf = await PDFDocument.create()
   const [copied] = await targetPdf.copyPages(sourcePdf, [pageIndex])
   targetPdf.addPage(copied)
-  return targetPdf.save()
+  const bytes = await targetPdf.save()
+  return Buffer.from(bytes)
 }
 
 async function streamZip(items: DownloadItem[]) {
@@ -102,7 +104,7 @@ async function streamZip(items: DownloadItem[]) {
       const buffer = await buildSinglePageBuffer(item.file, item.page)
       const base = item.file.name.replace(/\.pdf$/i, "")
       const name = `${base}_p${item.page}.pdf`
-      archive.append(buffer, { name })
+      archive.append(Buffer.from(buffer), { name })
     } else {
       archive.file(item.file.fullPath, { name: item.file.name })
     }
@@ -135,7 +137,8 @@ export async function GET(req: NextRequest) {
     const buffer = await buildSinglePageBuffer(file, page)
     const filename = page ? `${file.name.replace(/\.pdf$/i, "")}_p${page}.pdf` : file.name
 
-    return new NextResponse(buffer, {
+    const body = new Uint8Array(buffer)
+    return new NextResponse(body, {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename="${encodeURIComponent(filename)}"`,
@@ -176,7 +179,8 @@ export async function POST(req: NextRequest) {
       const buffer = await buildSinglePageBuffer(file, page)
       const filename = page ? `${file.name.replace(/\.pdf$/i, "")}_p${page}.pdf` : file.name
 
-      return new NextResponse(buffer, {
+      const body = new Uint8Array(buffer)
+      return new NextResponse(body, {
         headers: {
           "Content-Type": file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "application/octet-stream",
           "Content-Disposition": `attachment; filename="${encodeURIComponent(filename)}"`,
