@@ -1,12 +1,34 @@
+version: '3.8'
+
 services:
-  app:
-    build: .
+  # Gerenciador de Proxy (Nginx Proxy Manager)
+  nginx-proxy:
+    image: 'jc21/nginx-proxy-manager:latest'
+    container_name: nginx-proxy-manager
+    restart: always
     ports:
-      - "3000:3000"
-    environment:
-      - OS_HOST=172.17.0.13
-      - OS_USER=admin
-      - OS_PASS=d$tAb@3mT%r25!
-      - OS_INDEX=juridico
+      - '80:80'   # Entrada HTTP
+      - '443:443' # Entrada HTTPS (Essencial para o seu objetivo)
+      - '81:81'   # Painel de controle (Acesse via IP-DA-VM:81)
     volumes:
-      - /mnt/ocr-juridico:/dados:ro
+      - ./npm_data:/data
+      - ./npm_letsencrypt:/etc/letsencrypt
+    networks:
+      - juridico-network
+
+  # Sua Aplicação Jurídico OCR
+  app:
+    build:
+      context: .
+      dockerfile: dockerfile
+    container_name: juridico-ocr-app
+    restart: always
+    environment:
+      - PORT=3000
+      - TRUST_PROXY=true # Importante para aplicações que usam HTTPS via Proxy
+    networks:
+      - juridico-network
+
+networks:
+  juridico-network:
+    driver: bridge
