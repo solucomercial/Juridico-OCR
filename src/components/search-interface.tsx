@@ -36,6 +36,11 @@ function extractFileName(originalPath: string) {
   return parts[parts.length - 1] || "arquivo"
 }
 
+function toFileUrl(path?: string) {
+  if (!path) return "#"
+  return /^file:\/\//i.test(path) ? path : `file://${path}`
+}
+
 export default function SearchInterface() {
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<SearchResult[]>([])
@@ -314,7 +319,7 @@ export default function SearchInterface() {
 
                 <Button variant="outline" size="sm" asChild className="shrink-0">
                   <a
-                    href={hit._source.caminho_original || "#"}
+                    href={toFileUrl(hit._source.caminho_original)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-1"

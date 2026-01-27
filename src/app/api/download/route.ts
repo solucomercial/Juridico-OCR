@@ -5,113 +5,91 @@ import path from "path"
 import { PassThrough, Readable } from "stream"
 import { PDFDocument } from "pdf-lib"
 
-type SanitizedFile = {
-  fullPath: string
-  name: string
-  size: number
-}
-
 type DownloadItem = {
-  file: SanitizedFile
+  filePath: string
   page?: number
+  filename: string
 }
 
-const FILE_BASE_PATH = process.env.FILE_BASE_PATH
+const UNC_PREFIX = "//10.130.1.99/DeptosMatriz/Juridico"
+const LOCAL_BASE = "/dados"
 
-function getBaseDir() {
-  if (!FILE_BASE_PATH) {
-    throw new Error("Variável de ambiente FILE_BASE_PATH não configurada no servidor.")
+function mapUncToLocal(uncPath: string): string {
+  if (uncPath.toUpperCase().startsWith(UNC_PREFIX.toUpperCase())) {
+    const relative = uncPath.slice(UNC_PREFIX.length)
+    return path.join(LOCAL_BASE, relative)
   }
-  return path.resolve(FILE_BASE_PATH)
+  return uncPath
 }
 
-async function sanitizeFilePath(requestedPath: string): Promise<SanitizedFile> {
-  if (!requestedPath) {
-    throw new Error("Caminho de arquivo ausente.")
-  }
+function extractFilename(filePath: string): string {
+  const parts = filePath.split(/[\\/]/)
+  return parts[parts.length - 1] || "arquivo"
+}
 
-  const baseDir = getBaseDir()
-  const normalized = path.normalize(requestedPath)
-  const target = path.isAbsolute(normalized) ? normalized : path.join(baseDir, normalized)
-  const resolved = path.resolve(target)
-  const relative = path.relative(baseDir, resolved)
-
-  if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    throw new Error("Caminho solicitado está fora do diretório permitido.")
-  }
-
-  const fileStat = await stat(resolved)
-  if (!fileStat.isFile()) {
-    throw new Error("Caminho solicitado não é um arquivo válido.")
-  }
-
-  return {
-    fullPath: resolved,
-    name: path.basename(resolved),
-    size: fileStat.size,
+async function validateAndGetFile(filePath: string): Promise<{ fullPath: string; size: number }> {
+  console.info(`[download] Validando: ${filePath}`)
+  try {
+    const stats = await stat(filePath)
+    if (!stats.isFile()) {
+      throw new Error("Caminho não é um arquivo.")
+    }
+    console.info(`[download] Arquivo encontrado: ${stats.size} bytes`)
+    return { fullPath: filePath, size: stats.size }
+  } catch (err) {
+    console.error(`[download] Erro ao validar: ${filePath}`, err)
+    throw new Error(`Arquivo não encontrado: ${filePath}`)
   }
 }
 
-async function streamSingleFile(file: SanitizedFile) {
-  const buffer = await readFile(file.fullPath)
-  const body = new Uint8Array(buffer)
-  return new NextResponse(body, {
-    headers: {
-      "Content-Type": "application/octet-stream",
-      "Content-Disposition": `attachment; filename="${encodeURIComponent(file.name)}"`,
-      "Content-Length": file.size.toString(),
-    },
-  })
-}
-
-async function buildSinglePageBuffer(file: SanitizedFile, page?: number): Promise<Buffer> {
-  if (!page || page < 1) {
-    return readFile(file.fullPath)
-  }
-
-  if (!file.name.toLowerCase().endsWith(".pdf")) {
-    throw new Error("Extração de página disponível apenas para PDFs.")
-  }
-
-  const source = await readFile(file.fullPath)
-  const sourcePdf = await PDFDocument.load(source)
+async function extractSinglePage(pdfPath: string, page: number): Promise<Buffer> {
+  console.info(`[download] Extraindo página ${page} de: ${pdfPath}`)
+  const buffer = await readFile(pdfPath)
+  const sourcePdf = await PDFDocument.load(buffer)
   const pageIndex = page - 1
 
   if (pageIndex < 0 || pageIndex >= sourcePdf.getPageCount()) {
-    throw new Error("Página solicitada está fora dos limites do documento.")
+    throw new Error(`Página ${page} fora dos limites. Total: ${sourcePdf.getPageCount()}`)
   }
 
   const targetPdf = await PDFDocument.create()
   const [copied] = await targetPdf.copyPages(sourcePdf, [pageIndex])
   targetPdf.addPage(copied)
   const bytes = await targetPdf.save()
+  console.info(`[download] Página extraída: ${bytes.length} bytes`)
   return Buffer.from(bytes)
 }
 
 async function streamZip(items: DownloadItem[]) {
+  console.info(`[download] Criando ZIP com ${items.length} arquivo(s)`)
   const archive = archiver("zip", { zlib: { level: 9 } })
   const passThrough = new PassThrough()
   const webStream = Readable.toWeb(passThrough) as unknown as ReadableStream<Uint8Array>
 
   archive.on("error", (error: unknown) => {
     const err = error instanceof Error ? error : new Error(String(error))
+    console.error("[download] Erro no archiver:", err)
     passThrough.destroy(err)
   })
   archive.pipe(passThrough)
 
   for (const item of items) {
-    if (item.page) {
-      const buffer = await buildSinglePageBuffer(item.file, item.page)
-      const base = item.file.name.replace(/\.pdf$/i, "")
-      const name = `${base}_p${item.page}.pdf`
-      archive.append(Buffer.from(buffer), { name })
+    const localPath = mapUncToLocal(item.filePath)
+    await validateAndGetFile(localPath)
+    const isPdf = /\.pdf$/i.test(item.filename)
+
+    if (isPdf && item.page && item.page > 0) {
+      const singlePageBuffer = await extractSinglePage(localPath, item.page)
+      const name = item.filename.replace(/\.pdf$/i, "") + `_p${item.page}.pdf`
+      archive.append(singlePageBuffer, { name })
     } else {
-      archive.file(item.file.fullPath, { name: item.file.name })
+      archive.file(localPath, { name: item.filename })
     }
   }
 
   archive.finalize().catch((error: unknown) => {
     const err = error instanceof Error ? error : new Error(String(error))
+    console.error("[download] Erro ao finalizar ZIP:", err)
     passThrough.destroy(err)
   })
 
@@ -128,27 +106,48 @@ export async function GET(req: NextRequest) {
     const pathParam = req.nextUrl.searchParams.get("path")
     const pageParam = req.nextUrl.searchParams.get("page")
 
+    console.info(`[download][GET] path=${pathParam} page=${pageParam}`)
+
     if (!pathParam) {
       return NextResponse.json({ error: "Parâmetro 'path' é obrigatório." }, { status: 400 })
     }
 
-    const file = await sanitizeFilePath(pathParam)
-    const page = pageParam ? Number(pageParam) : undefined
-    const buffer = await buildSinglePageBuffer(file, page)
-    const filename = page ? `${file.name.replace(/\.pdf$/i, "")}_p${page}.pdf` : file.name
+    const localPath = mapUncToLocal(pathParam)
+    console.info(`[download][GET] Caminho local: ${localPath}`)
 
+    const { fullPath, size } = await validateAndGetFile(localPath)
+    const filename = extractFilename(pathParam)
+    const page = pageParam ? Number(pageParam) : undefined
+
+    const isPdf = /\.pdf$/i.test(filename)
+
+    if (isPdf && page && page > 0) {
+      const singlePageBuffer = await extractSinglePage(fullPath, page)
+      const pageFilename = filename.replace(/\.pdf$/i, "") + `_p${page}.pdf`
+      const body = new Uint8Array(singlePageBuffer)
+
+      return new NextResponse(body, {
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `attachment; filename="${encodeURIComponent(pageFilename)}"`,
+          "Content-Length": String(body.byteLength),
+        },
+      })
+    }
+
+    const buffer = await readFile(fullPath)
     const body = new Uint8Array(buffer)
     return new NextResponse(body, {
       headers: {
-        "Content-Type": "application/pdf",
+        "Content-Type": isPdf ? "application/pdf" : "application/octet-stream",
         "Content-Disposition": `attachment; filename="${encodeURIComponent(filename)}"`,
-        "Content-Length": buffer.length.toString(),
+        "Content-Length": String(size),
       },
     })
   } catch (error) {
+    console.error("[download][GET] Erro:", error)
     const message = error instanceof Error ? error.message : "Erro ao preparar download."
-    const status = message.includes("diretório permitido") || message.includes("arquivo") ? 400 : 500
-    return NextResponse.json({ error: message }, { status })
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
 
@@ -157,42 +156,76 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const entries = Array.isArray(body?.paths) ? body.paths : []
 
+    console.info(`[download][POST] ${entries.length} item(ns) solicitado(s)`)
+
     if (entries.length === 0) {
       return NextResponse.json({ error: "Envie ao menos um caminho em 'paths'." }, { status: 400 })
     }
 
     const items: DownloadItem[] = []
     for (const entry of entries) {
+      let pathStr = ""
+      let page: number | undefined
+
       if (typeof entry === "string") {
-        const file = await sanitizeFilePath(entry)
-        items.push({ file })
+        pathStr = entry
       } else if (entry && typeof entry === "object" && "path" in entry) {
-        const pathValue = String((entry as { path: string }).path)
-        const pageValue = "page" in entry ? Number((entry as { page?: number }).page) : undefined
-        const file = await sanitizeFilePath(pathValue)
-        items.push({ file, page: pageValue })
+        pathStr = String((entry as { path: string }).path)
+        page = "page" in entry ? Number((entry as { page?: number }).page) : undefined
+      } else {
+        console.warn(`[download][POST] Entry inválido:`, entry)
+        continue
       }
+
+      const localPath = mapUncToLocal(pathStr)
+      console.info(`[download][POST] Mapeado: ${pathStr} -> ${localPath}`)
+
+      items.push({
+        filePath: pathStr,
+        page,
+        filename: extractFilename(pathStr),
+      })
+    }
+
+    if (items.length === 0) {
+      return NextResponse.json({ error: "Nenhum item válido para processar." }, { status: 400 })
     }
 
     if (items.length === 1) {
-      const { file, page } = items[0]
-      const buffer = await buildSinglePageBuffer(file, page)
-      const filename = page ? `${file.name.replace(/\.pdf$/i, "")}_p${page}.pdf` : file.name
+      const item = items[0]
+      const localPath = mapUncToLocal(item.filePath)
+      const { fullPath, size } = await validateAndGetFile(localPath)
+      const isPdf = /\.pdf$/i.test(item.filename)
 
-      const body = new Uint8Array(buffer)
-      return new NextResponse(body, {
+      if (isPdf && item.page && item.page > 0) {
+        const singlePageBuffer = await extractSinglePage(fullPath, item.page)
+        const pageFilename = item.filename.replace(/\.pdf$/i, "") + `_p${item.page}.pdf`
+        const responseBody = new Uint8Array(singlePageBuffer)
+
+        return new NextResponse(responseBody, {
+          headers: {
+            "Content-Type": "application/pdf",
+            "Content-Disposition": `attachment; filename="${encodeURIComponent(pageFilename)}"`,
+            "Content-Length": String(responseBody.byteLength),
+          },
+        })
+      }
+
+      const buffer = await readFile(fullPath)
+      const responseBody = new Uint8Array(buffer)
+      return new NextResponse(responseBody, {
         headers: {
-          "Content-Type": file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "application/octet-stream",
-          "Content-Disposition": `attachment; filename="${encodeURIComponent(filename)}"`,
-          "Content-Length": buffer.length.toString(),
+          "Content-Type": isPdf ? "application/pdf" : "application/octet-stream",
+          "Content-Disposition": `attachment; filename="${encodeURIComponent(item.filename)}"`,
+          "Content-Length": String(size),
         },
       })
     }
 
     return streamZip(items)
   } catch (error) {
+    console.error("[download][POST] Erro:", error)
     const message = error instanceof Error ? error.message : "Erro ao preparar download."
-    const status = message.includes("diretório permitido") || message.includes("arquivo") ? 400 : 500
-    return NextResponse.json({ error: message }, { status })
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

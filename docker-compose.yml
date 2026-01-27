@@ -1,0 +1,12 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - OS_HOST=172.17.0.13
+      - OS_USER=admin
+      - OS_PASS=d$tAb@3mT%r25!
+      - OS_INDEX=juridico
+    volumes:
+      - /mnt/ocr-juridico:/dados:ro
