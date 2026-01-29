@@ -31,9 +31,12 @@ services:
       dockerfile: dockerfile
     container_name: juridico-ocr-app
     restart: always
+    env_file:
+      - .env
     environment:
       - PORT=3000
       - TRUST_PROXY=true # Importante para aplicações que usam HTTPS via Proxy
+      - NODE_ENV=production
     volumes:
       - /mnt/ocr-juridico:/juridico
       - /mnt/ocr-juridico-people:/people
