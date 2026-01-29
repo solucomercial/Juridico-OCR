@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
           multi_match: {
             query,
             fields: ["conteudo", "arquivo^2"],
-            fuzziness: "AUTO",
+            fuzziness: "2",
           },
         },
         highlight: {
