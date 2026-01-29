@@ -11,13 +11,22 @@ type DownloadItem = {
   filename: string
 }
 
-const UNC_PREFIX = "//10.130.1.99/DeptosMatriz/Juridico"
-const LOCAL_BASE = "/dados"
+// Mapeamento baseado nos servidores do indexador.py
+const NFS_MAPPING: Record<string, string> = {
+  "//10.130.1.99/DeptosMatriz/Juridico": "/juridico",
+  "//172.17.0.10/h$/People": "/people",
+  "//172.17.0.10/h$/sign": "/sign",
+  "//172.17.0.10/h$/sign_original_files": "/sign_original_files"
+}
 
 function mapUncToLocal(uncPath: string): string {
-  if (uncPath.toUpperCase().startsWith(UNC_PREFIX.toUpperCase())) {
-    const relative = uncPath.slice(UNC_PREFIX.length)
-    return path.join(LOCAL_BASE, relative)
+  const upperUnc = uncPath.toUpperCase()
+  for (const [nfsPrefix, localPath] of Object.entries(NFS_MAPPING)) {
+    if (upperUnc.startsWith(nfsPrefix.toUpperCase())) {
+      const relative = uncPath.slice(nfsPrefix.length)
+      // Converte o caminho UNC para o volume montado no Docker
+      return path.join(localPath, relative)
+    }
   }
   return uncPath
 }
