@@ -34,6 +34,11 @@ services:
     environment:
       - PORT=3000
       - TRUST_PROXY=true # Importante para aplicações que usam HTTPS via Proxy
+    volumes:
+      - /mnt/ocr-juridico:/juridico
+      - /mnt/ocr-juridico-people:/people
+      - /mnt/ocr-juridico-Sign:/sign
+      - /mnt/ocr-juridico-sign_original_files:/sign_original_files
     networks:
       - juridico-network
     deploy:
