@@ -58,8 +58,9 @@ function extractFileName(originalPath: string) {
 
 function toFileUrl(path?: string) {
   if (!path) return "#"
-  // Retorna o caminho original como file:// sem mapeamento
-  return `file://${path}`
+  const fileUrl = `file://${path}`
+  console.log("File URL:", fileUrl) // Adicione esta linha para debug
+  return fileUrl
 }
 
 export default function SearchInterface() {

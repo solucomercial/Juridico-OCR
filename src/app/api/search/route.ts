@@ -25,6 +25,8 @@ export async function POST(req: NextRequest) {
     const finalSize = Math.min(requestedSize, MAX_SIZE)
     const from = (pageNumber - 1) * finalSize
 
+    const queryObject = query.split(' ').length > 1 ? { match_phrase: { conteudo: query } } : { multi_match: { query, fields: ["conteudo", "arquivo^2"], fuzziness: "1" } };
+
     if (!SEARCH_URL || !OS_USER || !OS_PASS) {
       return NextResponse.json({ error: "OpenSearch não configurado no servidor." }, { status: 500 })
     }
@@ -36,13 +38,7 @@ export async function POST(req: NextRequest) {
         Authorization: `Basic ${Buffer.from(`${OS_USER}:${OS_PASS}`).toString("base64")}`,
       },
       body: JSON.stringify({
-        query: {
-          multi_match: {
-            query,
-            fields: ["conteudo", "arquivo^2"],
-            fuzziness: "1",
-          },
-        },
+        query: queryObject,
         highlight: {
           fields: {
             conteudo: { fragment_size: 200 },
