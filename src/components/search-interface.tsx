@@ -254,8 +254,14 @@ export default function SearchInterface() {
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
+      <a href="https://solucoesterceirizadas.com.br/" target="_blank" rel="noopener noreferrer">
+        <img 
+          src="/logo-solu-web.png" 
+          alt="Soluções Serviços Terceirizados" 
+          className="mx-auto h-40 w-auto pb-4 transition-opacity hover:opacity-80" 
+        />
+      </a>
       <header className="text-center space-y-2">
-        <h1 className="text-3xl font-bold text-slate-800">Soluções Serviços Terceirizados</h1>
         <p className="text-muted-foreground">Portal de Consulta de Documentos - OpenSearch</p>
       </header>
 
@@ -341,7 +347,7 @@ export default function SearchInterface() {
 
                 <Button variant="outline" size="sm" asChild className="shrink-0">
                   <a
-                    href={toFileUrl(hit._source.caminho_original)}
+                    href={(hit._source.caminho_original)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-1"

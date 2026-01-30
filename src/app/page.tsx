@@ -23,7 +23,7 @@ export default function Page() {
               {/* Logo e Link Institucional */}
               <div className="flex items-center gap-2">
                 <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg bg-slate-100 shadow-sm">
-                  <Image src="/solu-web.jpeg" alt="Soluções Serviços Terceirizados" width={40} height={40} />
+                  <Image src="/solu-web.png" alt="Soluções Serviços Terceirizados" width={40} height={40} />
                 </div>
                 <Link 
                   href="https://solucoesterceirizadas.com.br/" 
