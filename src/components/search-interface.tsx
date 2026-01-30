@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Search, FileText, Loader2, ExternalLink, Calendar, Download } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -64,6 +65,9 @@ function toFileUrl(path?: string) {
 }
 
 export default function SearchInterface() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<SearchResult[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -73,6 +77,39 @@ export default function SearchInterface() {
   const [totalHits, setTotalHits] = useState(0)
   const [selectedItems, setSelectedItems] = useState<Map<string, SelectedItem>>(new Map())
   const [isDownloading, setIsDownloading] = useState(false)
+  const [isInitialized, setIsInitialized] = useState(false)
+
+  // Carregar busca da URL ao inicializar
+  useEffect(() => {
+    const queryFromUrl = searchParams.get('q')
+    const pageFromUrl = searchParams.get('page')
+    
+    if (queryFromUrl) {
+      setQuery(queryFromUrl)
+      const pageNumber = pageFromUrl ? parseInt(pageFromUrl, 10) : 1
+      setPage(pageNumber)
+      
+      // Executar busca automaticamente se houver query na URL
+      if (!isInitialized) {
+        setIsInitialized(true)
+        handleSearch(pageNumber, queryFromUrl)
+      }
+    } else {
+      setIsInitialized(true)
+    }
+  }, [])
+
+  // Função para atualizar a URL com os parâmetros de busca
+  function updateURL(searchQuery: string, currentPage: number) {
+    const params = new URLSearchParams()
+    if (searchQuery.trim()) {
+      params.set('q', searchQuery.trim())
+      params.set('page', currentPage.toString())
+    }
+    
+    const newUrl = params.toString() ? `?${params.toString()}` : window.location.pathname
+    router.push(newUrl, { scroll: false })
+  }
 
   function selectAllCurrentPage() {
     setSelectedItems((prev) => {
@@ -144,11 +181,15 @@ export default function SearchInterface() {
     }
   }
 
-  async function handleSearch(nextPage = 1) {
-    if (!query.trim()) return
+  async function handleSearch(nextPage = 1, searchQuery?: string) {
+    const queryToSearch = searchQuery ?? query
+    if (!queryToSearch.trim()) return
 
     const safePage = nextPage > 0 ? Math.floor(nextPage) : 1
     setPage(safePage)
+
+    // Atualizar URL com os parâmetros de busca
+    updateURL(queryToSearch, safePage)
 
     setIsLoading(true)
     setStatus("Pesquisando no acervo jurídico...")
@@ -163,7 +204,7 @@ export default function SearchInterface() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          query,
+          query: queryToSearch,
           page: safePage,
         }),
       })
@@ -254,15 +295,14 @@ export default function SearchInterface() {
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
-      {/* <a href="https://solucoesterceirizadas.com.br/" target="_blank" rel="noopener noreferrer">
+      <a href="http://localhost:3000//" rel="noopener noreferrer">
         <img 
           src="/logo-solu-web.png" 
           alt="Soluções Serviços Terceirizados" 
           className="mx-auto h-40 w-auto pb-4 transition-opacity hover:opacity-80" 
         />
-      </a> */}
+      </a>
       <header className="text-center space-y-2">
-        <h1 className="text-3xl font-bold text-slate-800">Soluções Serviços Terceirizados</h1>
         <p className="text-muted-foreground">Portal de Consulta de Documentos - OpenSearch</p>
       </header>
 
